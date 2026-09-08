@@ -46,9 +46,22 @@ export class Attempt {
     this.error = null;
   }
 
-  markFailed(errorMessage) {
-    this.status = AttemptStatus.FAILED;
-    this.error = errorMessage;
-    this.completedAt = new Date().toISOString();
+  get score() {
+    return this.result?.overallScore ?? null;
+  }
+
+  toJSON() {
+    return {
+      id: this.id,
+      problemId: this.problemId,
+      attemptNumber: this.attemptNumber,
+      submission: this.submission,
+      status: this.status,
+      score: this.score,
+      result: this.result,
+      error: this.error,
+      createdAt: this.createdAt,
+      completedAt: this.completedAt
+    };
   }
 }

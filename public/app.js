@@ -19,6 +19,63 @@ const state = {
   aiProvider: localStorage.getItem('lld_ai_provider') || 'gemini'
 };
 
+// API Base URL - auto-detects if running via Live Server (port 5500), Vite (5173), or file://
+const API_BASE = (typeof window !== 'undefined' && window.location && window.location.origin && window.location.origin.includes(':3000'))
+  ? ''
+  : 'http://localhost:3000';
+
+/**
+ * Safely parse JSON from fetch responses.
+ * Detects non-JSON payloads (e.g. HTML 404 from Live Server or server crashes)
+ * and provides clear, actionable error messages instead of cryptic syntax errors.
+ */
+async function parseJsonResponse(res) {
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    const text = await res.text();
+    if (res.status === 404 || text.includes('cannot be found') || text.includes('<!DOCTYPE') || text.includes('<html')) {
+      throw new Error(
+        `Backend API not reachable at ${res.url} (HTTP ${res.status}). ` +
+        `Please ensure the backend server is running on http://localhost:3000 (run "npm start").`
+      );
+    }
+    throw new Error(`Server returned HTTP ${res.status}: ${text.slice(0, 120)}`);
+  }
+  return await res.json();
+}
+
+function showOfflineNotification(message) {
+  let banner = document.getElementById('offline-backend-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'offline-backend-banner';
+    banner.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 99999;
+      background: linear-gradient(90deg, #b91c1c, #991b1b);
+      color: #fff;
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.88rem;
+      font-weight: 500;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    `;
+    document.body.prepend(banner);
+  }
+  banner.innerHTML = `
+    <div style="display:flex; align-items:center; gap:8px;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <span><strong>Backend Connection Notice:</strong> ${escapeHtml(message)}</span>
+    </div>
+    <button onclick="window.location.reload()" style="background:#fff; color:#991b1b; border:none; padding:4px 12px; border-radius:4px; font-weight:600; cursor:pointer;">Retry</button>
+  `;
+}
+
 // Monaco Editor Instance reference
 let monacoEditor = null;
 
@@ -418,12 +475,12 @@ function setupEventListeners() {
     elements.aiKeyTestStatus.textContent = 'Testing connection with live AI API...';
 
     try {
-      const res = await fetch('/api/test-ai-key', {
+      const res = await fetch(`${API_BASE}/api/test-ai-key`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ apiKey, provider })
       });
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (data.success) {
         elements.aiKeyTestStatus.style.background = 'rgba(16, 185, 129, 0.15)';
         elements.aiKeyTestStatus.style.color = '#6ee7b7';
@@ -544,9 +601,12 @@ function setupEventListeners() {
  */
 async function loadProblemList() {
   try {
-    const res = await fetch('/api/problems');
-    const data = await res.json();
+    const res = await fetch(`${API_BASE}/api/problems`);
+    const data = await parseJsonResponse(res);
     if (data.success && data.data.length > 0) {
+      const banner = document.getElementById('offline-backend-banner');
+      if (banner) banner.remove();
+
       state.problems = data.data;
       elements.problemSelect.innerHTML = state.problems.map(p => `
         <option value="${p.id}">${p.title} (${p.difficulty})</option>
@@ -556,6 +616,7 @@ async function loadProblemList() {
     }
   } catch (err) {
     console.error('Failed to load problems:', err);
+    showOfflineNotification(err.message);
   }
 }
 
@@ -565,8 +626,8 @@ async function loadProblemList() {
 async function selectProblem(problemId) {
   try {
     state.currentProblemId = problemId;
-    const res = await fetch(`/api/problems/${problemId}`);
-    const data = await res.json();
+    const res = await fetch(`${API_BASE}/api/problems/${problemId}`);
+    const data = await parseJsonResponse(res);
     if (data.success) {
       state.currentProblem = data.data;
       renderProblemDetails(state.currentProblem);
@@ -755,7 +816,7 @@ async function submitSolution() {
   showEvaluationProgress();
 
   try {
-    const res = await fetch('/api/submissions', {
+    const res = await fetch(`${API_BASE}/api/submissions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -769,7 +830,7 @@ async function submitSolution() {
       })
     });
 
-    const data = await res.json();
+    const data = await parseJsonResponse(res);
     if (!data.success) {
       hideEvaluationProgress();
       alert(`Submission error: ${data.error}`);
@@ -826,8 +887,8 @@ async function pollAttemptStatus(attemptId) {
   const interval = setInterval(async () => {
     attemptsCount++;
     try {
-      const res = await fetch(`/api/submissions/${attemptId}/status`);
-      const json = await res.json();
+      const res = await fetch(`${API_BASE}/api/submissions/${attemptId}/status`);
+      const json = await parseJsonResponse(res);
 
       if (json.success && json.data) {
         const attempt = json.data;
@@ -1028,7 +1089,7 @@ function renderSimulationResult(sim) {
 async function reRunSimulation() {
   const scenarioId = elements.simScenarioSelect.value;
   try {
-    const res = await fetch('/api/simulate-change', {
+    const res = await fetch(`${API_BASE}/api/simulate-change`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1038,7 +1099,7 @@ async function reRunSimulation() {
         rationale: elements.rationaleEditor.value
       })
     });
-    const data = await res.json();
+    const data = await parseJsonResponse(res);
     if (data.success) {
       renderSimulationResult(data.data);
     }
@@ -1053,8 +1114,8 @@ async function reRunSimulation() {
 async function refreshAttemptsList() {
   if (!state.currentProblemId) return;
   try {
-    const res = await fetch(`/api/problems/${state.currentProblemId}/attempts`);
-    const data = await res.json();
+    const res = await fetch(`${API_BASE}/api/problems/${state.currentProblemId}/attempts`);
+    const data = await parseJsonResponse(res);
     if (data.success) {
       state.attempts = data.data;
       elements.attemptCountBadge.textContent = state.attempts.length;
@@ -1102,8 +1163,8 @@ function renderAttemptsHistory() {
 
 async function viewAttemptDetails(attemptId) {
   try {
-    const res = await fetch(`/api/attempts/${attemptId}`);
-    const data = await res.json();
+    const res = await fetch(`${API_BASE}/api/attempts/${attemptId}`);
+    const data = await parseJsonResponse(res);
     if (data.success) {
       elements.historyModal.classList.add('hidden');
       renderFeedbackDashboard(data.data);
@@ -1130,8 +1191,8 @@ async function compareSelectedAttempts() {
   }
 
   try {
-    const res = await fetch(`/api/attempts/compare/${baseId}/${targetId}`);
-    const data = await res.json();
+    const res = await fetch(`${API_BASE}/api/attempts/compare/${baseId}/${targetId}`);
+    const data = await parseJsonResponse(res);
     if (data.success) {
       const comp = data.data;
 
