@@ -15,14 +15,19 @@ const state = {
   latestResult: null,
   isEvaluating: false,
   monacoReady: false,
+  isClientMode: false,
   apiKey: localStorage.getItem('lld_ai_api_key') || '',
   aiProvider: localStorage.getItem('lld_ai_provider') || 'gemini'
 };
 
 // API Base URL - auto-detects if running via Live Server (port 5500), Vite (5173), or file://
-const API_BASE = (typeof window !== 'undefined' && window.location && window.location.origin && window.location.origin.includes(':3000'))
-  ? ''
-  : 'http://localhost:3000';
+function getApiBase() {
+  if (typeof window === 'undefined' || !window.location) return 'http://localhost:3000';
+  if (window.location.port === '3000') return '';
+  const hostname = window.location.hostname && window.location.hostname !== '' ? window.location.hostname : 'localhost';
+  return `http://${hostname}:3000`;
+}
+const API_BASE = getApiBase();
 
 /**
  * Safely parse JSON from fetch responses.
@@ -42,6 +47,64 @@ async function parseJsonResponse(res) {
     throw new Error(`Server returned HTTP ${res.status}: ${text.slice(0, 120)}`);
   }
   return await res.json();
+}
+
+function showStandaloneModeBadge() {
+  let badge = document.getElementById('connection-mode-badge');
+  if (!badge) {
+    badge = document.createElement('span');
+    badge.id = 'connection-mode-badge';
+    badge.style.cssText = `
+      font-size: 0.76rem;
+      padding: 3px 8px;
+      border-radius: 9999px;
+      background: rgba(56, 189, 248, 0.15);
+      color: #38bdf8;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-left: 10px;
+    `;
+    const brand = document.querySelector('.brand-name');
+    if (brand && brand.parentNode) {
+      brand.parentNode.appendChild(badge);
+    }
+  }
+  badge.innerHTML = '⚡ Client Standalone Mode';
+  badge.title = 'Running in browser mode with embedded LLD problems and client-side evaluator.';
+  const oldBanner = document.getElementById('offline-backend-banner');
+  if (oldBanner) oldBanner.remove();
+}
+
+function showServerConnectedBadge() {
+  let badge = document.getElementById('connection-mode-badge');
+  if (!badge) {
+    badge = document.createElement('span');
+    badge.id = 'connection-mode-badge';
+    badge.style.cssText = `
+      font-size: 0.76rem;
+      padding: 3px 8px;
+      border-radius: 9999px;
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-left: 10px;
+    `;
+    const brand = document.querySelector('.brand-name');
+    if (brand && brand.parentNode) {
+      brand.parentNode.appendChild(badge);
+    }
+  }
+  badge.innerHTML = '● Server Connected';
+  badge.title = 'Connected to Node.js backend on http://localhost:3000.';
+  const oldBanner = document.getElementById('offline-backend-banner');
+  if (oldBanner) oldBanner.remove();
 }
 
 function showOfflineNotification(message) {
@@ -597,27 +660,41 @@ function setupEventListeners() {
 }
 
 /**
- * API: Load Problem List
+ * API: Load Problem List (with zero-failure embedded fallback)
  */
 async function loadProblemList() {
+  let loadedFromServer = false;
+
   try {
     const res = await fetch(`${API_BASE}/api/problems`);
     const data = await parseJsonResponse(res);
-    if (data.success && data.data.length > 0) {
-      const banner = document.getElementById('offline-backend-banner');
-      if (banner) banner.remove();
-
+    if (data.success && data.data && data.data.length > 0) {
       state.problems = data.data;
-      elements.problemSelect.innerHTML = state.problems.map(p => `
-        <option value="${p.id}">${p.title} (${p.difficulty})</option>
-      `).join('');
-
-      await selectProblem(state.problems[0].id);
+      state.isClientMode = false;
+      showServerConnectedBadge();
+      loadedFromServer = true;
     }
   } catch (err) {
-    console.error('Failed to load problems:', err);
-    showOfflineNotification(err.message);
+    console.warn(`Backend API not reachable at ${API_BASE}. Falling back to embedded problem catalog:`, err.message);
   }
+
+  // If server is not reachable, seamlessly fall back to embedded seed problems
+  if (!loadedFromServer) {
+    if (typeof window !== 'undefined' && window.SEED_PROBLEMS && window.SEED_PROBLEMS.length > 0) {
+      state.problems = window.SEED_PROBLEMS;
+      state.isClientMode = true;
+      showStandaloneModeBadge();
+    } else {
+      showOfflineNotification(`Backend server not reached at ${API_BASE}. Please start with "npm start".`);
+      return;
+    }
+  }
+
+  elements.problemSelect.innerHTML = state.problems.map(p => `
+    <option value="${p.id}">${p.title} (${p.difficulty})</option>
+  `).join('');
+
+  await selectProblem(state.problems[0].id);
 }
 
 /**
@@ -626,16 +703,33 @@ async function loadProblemList() {
 async function selectProblem(problemId) {
   try {
     state.currentProblemId = problemId;
-    const res = await fetch(`${API_BASE}/api/problems/${problemId}`);
-    const data = await parseJsonResponse(res);
-    if (data.success) {
-      state.currentProblem = data.data;
+    let problem = null;
+
+    if (!state.isClientMode) {
+      try {
+        const res = await fetch(`${API_BASE}/api/problems/${problemId}`);
+        const data = await parseJsonResponse(res);
+        if (data.success && data.data) {
+          problem = data.data;
+        }
+      } catch (err) {
+        console.warn('Failed to fetch problem detail from server, using local catalog:', err);
+      }
+    }
+
+    if (!problem) {
+      const catalog = (typeof window !== 'undefined' && window.SEED_PROBLEMS) ? window.SEED_PROBLEMS : state.problems;
+      problem = catalog.find(p => p.id === problemId) || state.problems[0];
+    }
+
+    if (problem) {
+      state.currentProblem = problem;
       renderProblemDetails(state.currentProblem);
       loadStarterTemplateForLanguage(state.currentLanguage);
       await refreshAttemptsList();
     }
   } catch (err) {
-    console.error('Failed to fetch problem detail:', err);
+    console.error('Failed to select problem:', err);
   }
 }
 
@@ -800,9 +894,11 @@ function getDefaultDiagram(problemId) {
 }
 
 /**
- * Submit Solution Flow with Animated Progress Steps
+ * Submit Solution Flow with Animated Progress Steps (Dual-Mode: Server + Client Offline Engine)
  */
 async function submitSolution() {
+  if (state.isEvaluating) return;
+
   const code = getEditorCode().trim();
   const rationale = elements.rationaleEditor.value.trim();
   const diagram = elements.diagramEditor.value.trim();
@@ -815,33 +911,74 @@ async function submitSolution() {
   // Show Animated Evaluation Modal
   showEvaluationProgress();
 
-  try {
-    const res = await fetch(`${API_BASE}/api/submissions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        problemId: state.currentProblemId,
-        code,
-        language: state.currentLanguage,
-        rationale,
-        diagram,
-        apiKey: state.apiKey,
-        aiProvider: state.aiProvider
-      })
-    });
+  // 1. Try server evaluation if not in standalone client mode
+  if (!state.isClientMode) {
+    try {
+      const res = await fetch(`${API_BASE}/api/submissions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          problemId: state.currentProblemId,
+          code,
+          language: state.currentLanguage,
+          rationale,
+          diagram,
+          apiKey: state.apiKey,
+          aiProvider: state.aiProvider
+        })
+      });
 
-    const data = await parseJsonResponse(res);
-    if (!data.success) {
-      hideEvaluationProgress();
-      alert(`Submission error: ${data.error}`);
+      const data = await parseJsonResponse(res);
+      if (data.success && data.data?.attemptId) {
+        const attemptId = data.data.attemptId;
+        await pollAttemptStatus(attemptId);
+        return;
+      }
+    } catch (err) {
+      console.warn('Server submission not reachable, falling back to local client evaluator:', err.message);
+    }
+  }
+
+  // 2. Client-Side Evaluator Fallback (Instant, Zero Latency)
+  try {
+    await new Promise(r => setTimeout(r, 1200));
+    hideEvaluationProgress();
+
+    if (typeof window.evaluateCodeLocally !== 'function') {
+      alert('Local evaluation engine not available.');
       return;
     }
 
-    const attemptId = data.data.attemptId;
-    await pollAttemptStatus(attemptId);
-  } catch (err) {
+    const result = window.evaluateCodeLocally(
+      { code, language: state.currentLanguage, rationale, diagram },
+      state.currentProblem
+    );
+
+    // Save attempt in localStorage
+    const storageKey = `lld_attempts_${state.currentProblemId}`;
+    const localAttempts = JSON.parse(localStorage.getItem(storageKey) || '[]');
+    const attemptNumber = localAttempts.length + 1;
+    const attempt = {
+      id: `local_att_${Date.now()}_${attemptNumber}`,
+      problemId: state.currentProblemId,
+      attemptNumber,
+      submission: { code, language: state.currentLanguage, rationale, diagram },
+      status: 'COMPLETED',
+      score: result.overallScore,
+      result,
+      createdAt: new Date().toISOString(),
+      completedAt: new Date().toISOString()
+    };
+    localAttempts.push(attempt);
+    localStorage.setItem(storageKey, JSON.stringify(localAttempts));
+
+    state.latestResult = result;
+    state.activeAttempt = attempt;
+    await refreshAttemptsList();
+    renderFeedbackDashboard(attempt);
+  } catch (clientErr) {
     hideEvaluationProgress();
-    alert(`Network error: ${err.message}`);
+    alert(`Evaluation error: ${clientErr.message}`);
   }
 }
 
@@ -1088,42 +1225,74 @@ function renderSimulationResult(sim) {
 
 async function reRunSimulation() {
   const scenarioId = elements.simScenarioSelect.value;
-  try {
-    const res = await fetch(`${API_BASE}/api/simulate-change`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        problemId: state.currentProblemId,
-        scenarioId,
-        code: getEditorCode(),
-        rationale: elements.rationaleEditor.value
-      })
-    });
-    const data = await parseJsonResponse(res);
-    if (data.success) {
-      renderSimulationResult(data.data);
+  if (!state.isClientMode) {
+    try {
+      const res = await fetch(`${API_BASE}/api/simulate-change`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          problemId: state.currentProblemId,
+          scenarioId,
+          code: getEditorCode(),
+          rationale: elements.rationaleEditor.value
+        })
+      });
+      const data = await parseJsonResponse(res);
+      if (data.success && data.data) {
+        renderSimulationResult(data.data);
+        return;
+      }
+    } catch (err) {
+      console.warn('Server simulation not reachable, running client simulation:', err);
     }
-  } catch (err) {
-    console.error('Simulation error:', err);
+  }
+
+  // Local client simulation fallback
+  const scenario = (state.currentProblem?.changeScenarios || []).find(s => s.id === scenarioId) || state.currentProblem?.changeScenarios?.[0];
+  if (scenario) {
+    const code = getEditorCode();
+    const hasInterfaces = /\b(interface|abstract\s+class|\bABC\b|virtual\b)/i.test(code);
+    renderSimulationResult({
+      scenarioId: scenario.id,
+      scenarioTitle: scenario.title,
+      prompt: scenario.prompt,
+      impactLevel: hasInterfaces ? 'LOW_FRICTION' : 'HIGH_FRICTION',
+      adaptableClasses: hasInterfaces ? ['Interface Abstractions'] : [],
+      vulnerableClasses: hasInterfaces ? [] : ['Concrete Implementations'],
+      explanations: hasInterfaces
+        ? ['Decoupled contracts allow this requirement change to be added with minimal churn.']
+        : ['Direct coupling requires altering multiple methods to accommodate the new behavior.'],
+      designTakeaway: 'Decoupling behavior through Strategy or State patterns reduces refactoring friction.'
+    });
   }
 }
 
 /**
- * Attempts History & Diff Comparison
+ * Attempts History & Diff Comparison (Supports Server + Local Storage)
  */
 async function refreshAttemptsList() {
   if (!state.currentProblemId) return;
-  try {
-    const res = await fetch(`${API_BASE}/api/problems/${state.currentProblemId}/attempts`);
-    const data = await parseJsonResponse(res);
-    if (data.success) {
-      state.attempts = data.data;
-      elements.attemptCountBadge.textContent = state.attempts.length;
-      renderAttemptsHistory();
+
+  if (!state.isClientMode) {
+    try {
+      const res = await fetch(`${API_BASE}/api/problems/${state.currentProblemId}/attempts`);
+      const data = await parseJsonResponse(res);
+      if (data.success && Array.isArray(data.data)) {
+        state.attempts = data.data;
+        elements.attemptCountBadge.textContent = state.attempts.length;
+        renderAttemptsHistory();
+        return;
+      }
+    } catch (e) {
+      console.warn('Failed to load attempts from server, checking local storage:', e);
     }
-  } catch (e) {
-    console.error('Failed to load attempts:', e);
   }
+
+  // Local storage fallback
+  const storageKey = `lld_attempts_${state.currentProblemId}`;
+  state.attempts = JSON.parse(localStorage.getItem(storageKey) || '[]');
+  elements.attemptCountBadge.textContent = state.attempts.length;
+  renderAttemptsHistory();
 }
 
 function renderAttemptsHistory() {
@@ -1162,15 +1331,25 @@ function renderAttemptsHistory() {
 }
 
 async function viewAttemptDetails(attemptId) {
-  try {
-    const res = await fetch(`${API_BASE}/api/attempts/${attemptId}`);
-    const data = await parseJsonResponse(res);
-    if (data.success) {
-      elements.historyModal.classList.add('hidden');
-      renderFeedbackDashboard(data.data);
+  if (!state.isClientMode) {
+    try {
+      const res = await fetch(`${API_BASE}/api/attempts/${attemptId}`);
+      const data = await parseJsonResponse(res);
+      if (data.success && data.data) {
+        elements.historyModal.classList.add('hidden');
+        renderFeedbackDashboard(data.data);
+        return;
+      }
+    } catch (err) {
+      console.warn('Failed to fetch attempt from server, checking local attempts:', err);
     }
-  } catch (err) {
-    console.error('Error fetching attempt:', err);
+  }
+
+  // Local storage lookup
+  const found = state.attempts.find(a => a.id === attemptId);
+  if (found) {
+    elements.historyModal.classList.add('hidden');
+    renderFeedbackDashboard(found);
   }
 }
 
@@ -1190,25 +1369,68 @@ async function compareSelectedAttempts() {
     return;
   }
 
-  try {
-    const res = await fetch(`${API_BASE}/api/attempts/compare/${baseId}/${targetId}`);
-    const data = await parseJsonResponse(res);
-    if (data.success) {
-      const comp = data.data;
-
-      // Score Delta
-      const delta = comp.scoreDelta;
-      elements.diffScoreDelta.textContent = `Δ ${delta >= 0 ? '+' : ''}${delta} pts`;
-      elements.diffScoreDelta.className = `score-delta-badge ${delta >= 0 ? 'badge-success' : 'badge-warning'}`;
-
-      // Code Diff
-      elements.diffCodeView.innerHTML = renderDiffLines(comp.codeDiff);
-      // Rationale Diff
-      elements.diffRationaleView.innerHTML = renderDiffLines(comp.rationaleDiff);
+  if (!state.isClientMode) {
+    try {
+      const res = await fetch(`${API_BASE}/api/attempts/compare/${baseId}/${targetId}`);
+      const data = await parseJsonResponse(res);
+      if (data.success && data.data) {
+        renderComparison(data.data);
+        return;
+      }
+    } catch (err) {
+      console.warn('Server comparison failed, computing locally:', err);
     }
-  } catch (err) {
-    console.error('Diff error:', err);
   }
+
+  // Local comparison
+  const a1 = state.attempts.find(a => a.id === baseId);
+  const a2 = state.attempts.find(a => a.id === targetId);
+  if (a1 && a2) {
+    const delta = (a2.score ?? 0) - (a1.score ?? 0);
+    const codeDiff = computeClientLineDiff(a1.submission?.code || '', a2.submission?.code || '');
+    const rationaleDiff = computeClientLineDiff(a1.submission?.rationale || '', a2.submission?.rationale || '');
+    renderComparison({
+      scoreDelta: delta,
+      codeDiff,
+      rationaleDiff
+    });
+  }
+}
+
+function renderComparison(comp) {
+  const delta = comp.scoreDelta;
+  elements.diffScoreDelta.textContent = `Δ ${delta >= 0 ? '+' : ''}${delta} pts`;
+  elements.diffScoreDelta.className = `score-delta-badge ${delta >= 0 ? 'badge-success' : 'badge-warning'}`;
+  elements.diffCodeView.innerHTML = renderDiffLines(comp.codeDiff);
+  elements.diffRationaleView.innerHTML = renderDiffLines(comp.rationaleDiff);
+}
+
+function computeClientLineDiff(text1 = '', text2 = '') {
+  const lines1 = (text1 || '').split('\n');
+  const lines2 = (text2 || '').split('\n');
+  const diff = [];
+  let i = 0, j = 0;
+  while (i < lines1.length || j < lines2.length) {
+    const l1 = lines1[i];
+    const l2 = lines2[j];
+    if (i < lines1.length && j < lines2.length) {
+      if (l1 === l2) {
+        diff.push({ type: 'unchanged', text: l1, lineBase: i + 1, lineTarget: j + 1 });
+        i++; j++;
+      } else {
+        diff.push({ type: 'removed', text: l1, lineBase: i + 1 });
+        diff.push({ type: 'added', text: l2, lineTarget: j + 1 });
+        i++; j++;
+      }
+    } else if (i < lines1.length) {
+      diff.push({ type: 'removed', text: l1, lineBase: i + 1 });
+      i++;
+    } else if (j < lines2.length) {
+      diff.push({ type: 'added', text: l2, lineTarget: j + 1 });
+      j++;
+    }
+  }
+  return diff;
 }
 
 function renderDiffLines(diff = []) {

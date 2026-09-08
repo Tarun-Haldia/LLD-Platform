@@ -17,11 +17,13 @@ export function createApp({
 } = {}) {
   const app = express();
 
-  // Enable CORS for all origins (supports Live Server port 5500, Vite, or direct access)
+  // Enable CORS for all origins (supports Live Server port 5500, Vite, file://, and Chrome Private Network Access)
   app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
+    const origin = req.headers.origin || '*';
+    res.header('Access-Control-Allow-Origin', origin);
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Access-Control-Request-Private-Network');
+    res.header('Access-Control-Allow-Private-Network', 'true');
     if (req.method === 'OPTIONS') {
       return res.sendStatus(200);
     }
