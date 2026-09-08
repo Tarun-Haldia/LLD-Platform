@@ -281,5 +281,10 @@ export function createApp({
     }
   });
 
+  // Fallback for unmatched API routes: Always return JSON, never HTML
+  app.all('/api/*', (req, res) => {
+    res.status(404).json({ success: false, error: `Endpoint ${req.method} ${req.originalUrl} not found.` });
+  });
+
   return app;
 }
