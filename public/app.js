@@ -16,6 +16,7 @@ const state = {
   isEvaluating: false,
   monacoReady: false,
   isClientMode: false,
+  theme: localStorage.getItem('lld_theme') || 'light',
   apiKey: localStorage.getItem('lld_ai_api_key') || '',
   aiProvider: localStorage.getItem('lld_ai_provider') || 'gemini'
 };
@@ -167,6 +168,8 @@ const elements = {
   diagramEditor: document.getElementById('diagram-editor'),
   diagramOutput: document.getElementById('diagram-output'),
 
+  btnThemeToggle: document.getElementById('btn-theme-toggle'),
+  themeLabelText: document.getElementById('theme-label-text'),
   btnSubmitMain: document.getElementById('btn-submit-main'),
   btnResetTemplate: document.getElementById('btn-reset-template'),
   btnRenderDiagram: document.getElementById('btn-render-diagram'),
@@ -254,15 +257,16 @@ if (window.mermaid) {
  */
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('%c[LLD Studio]%c Client starting up | Target API:', 'color:#6366f1;font-weight:bold;', 'color:#94a3b8;', API_BASE || 'same-origin');
+  initTheme();
   updateAiStatusBadge();
   setupEventListeners();
   await initMonacoEditor();
   await loadProblemList();
-  console.log(`%c[LLD Studio]%c Ready! Mode: ${state.isClientMode ? '⚡ Client Standalone' : '● Server Connected'} | Problem: ${state.currentProblemId}`, 'color:#10b981;font-weight:bold;', 'color:#94a3b8;');
+  console.log(`%c[LLD Studio]%c Ready! Mode: ${state.isClientMode ? '⚡ Client Standalone' : '● Server Connected'} | Problem: ${state.currentProblemId} | Theme: ${state.theme}`, 'color:#10b981;font-weight:bold;', 'color:#94a3b8;');
 });
 
 /**
- * Monaco Editor Setup with VS Code Dark Theme & Rich LLD Autocompletions
+ * Monaco Editor Setup with VS Code Dark/Light Theme & Rich LLD Autocompletions
  */
 function initMonacoEditor() {
   return new Promise((resolve) => {
@@ -278,7 +282,7 @@ function initMonacoEditor() {
         monacoEditor = monaco.editor.create(elements.monacoContainer, {
           value: '// Loading starter template...',
           language: initialLang,
-          theme: 'vs-dark', // Authentic VS Code Dark Theme
+          theme: state.theme === 'dark' ? 'vs-dark' : 'vs', // Authentic VS Code Theme (Light / Dark)
           automaticLayout: true,
           fontSize: 14,
           fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, 'Courier New', monospace",
@@ -456,7 +460,8 @@ function setEditorCode(code, language = state.currentLanguage) {
 function updateCodeStats() {
   const code = getEditorCode();
   const lineCount = code ? code.split('\n').length : 0;
-  elements.codeStats.textContent = `${lineCount} lines | ${state.currentLanguage.toUpperCase()} (VS Code Theme)`;
+  const themeName = state.theme === 'light' ? 'Light' : 'Dark';
+  elements.codeStats.textContent = `${lineCount} lines | ${state.currentLanguage.toUpperCase()} (VS Code ${themeName})`;
 }
 
 function updateAiStatusBadge() {
@@ -472,9 +477,57 @@ function updateAiStatusBadge() {
 }
 
 /**
+ * Theme Management (Minimal White / Dark Obsidian)
+ */
+function initTheme() {
+  const savedTheme = localStorage.getItem('lld_theme') || 'light';
+  applyTheme(savedTheme, false);
+}
+
+function applyTheme(theme, updateEditor = true) {
+  state.theme = theme;
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('lld_theme', theme);
+
+  const themeMeta = document.querySelector('meta[name="theme-color"]');
+  if (themeMeta) {
+    themeMeta.setAttribute('content', theme === 'light' ? '#ffffff' : '#0a0e17');
+  }
+
+  if (elements.themeLabelText) {
+    elements.themeLabelText.textContent = theme === 'light' ? 'Light' : 'Dark';
+  }
+  if (elements.btnThemeToggle) {
+    elements.btnThemeToggle.title = `Switch to ${theme === 'light' ? 'Dark' : 'Light'} theme`;
+  }
+
+  if (updateEditor && typeof monaco !== 'undefined' && monaco.editor) {
+    const monacoTheme = theme === 'dark' ? 'vs-dark' : 'vs';
+    monaco.editor.setTheme(monacoTheme);
+    console.log(`%c[LLD Studio]%c Switched theme to %c${theme}%c (Monaco: %c${monacoTheme}%c)`,
+      'color:#6366f1;font-weight:bold;', 'color:#94a3b8;',
+      'color:#38bdf8;font-weight:bold;', 'color:#94a3b8;',
+      'color:#34d399;font-weight:bold;', 'color:#94a3b8;');
+  }
+  updateCodeStats();
+}
+
+function toggleTheme() {
+  const newTheme = state.theme === 'light' ? 'dark' : 'light';
+  applyTheme(newTheme, true);
+}
+
+/**
  * Event Listeners
  */
 function setupEventListeners() {
+  // Theme Toggle
+  if (elements.btnThemeToggle) {
+    elements.btnThemeToggle.addEventListener('click', () => {
+      toggleTheme();
+    });
+  }
+
   // Problem Selection
   elements.problemSelect.addEventListener('change', async (e) => {
     await selectProblem(e.target.value);
