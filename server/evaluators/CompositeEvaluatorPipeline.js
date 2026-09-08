@@ -24,8 +24,11 @@ export class CompositeEvaluatorPipeline {
    * @returns {Promise<EvaluationResult>}
    */
   async evaluate(submission, problem, options = {}) {
+    console.log(`[Pipeline] ▶ Starting evaluation pipeline for problem "${problem.id}" (${submission.language})`);
+
     // Stage 1: Deterministic Static & Smell Analysis
     const detResult = await this.deterministicEvaluator.evaluate(submission, problem);
+    console.log(`[Pipeline] ✓ Stage 1 (Deterministic): Score ${detResult.overallScore}/100, Smells: ${detResult.smells?.length || 0}`);
 
     // Stage 2: Deep Qualitative Reasoning with Timeout Guard & Fallback
     let reasoningResult = null;
@@ -42,8 +45,9 @@ export class CompositeEvaluatorPipeline {
         }),
         this.timeoutMs
       );
+      console.log(`[Pipeline] ✓ Stage 2 (Reasoning): Completed via ${reasoningResult.evaluatorProvider || 'Analyzer'}`);
     } catch (err) {
-      console.warn(`Reasoning evaluation timed out or failed (${err.message}). Using resilient fallback.`);
+      console.warn(`[Pipeline] ⚠ Reasoning evaluation timed out or failed (${err.message}). Using resilient fallback.`);
       isFallback = true;
       reasoningResult = {
         strengths: [
@@ -70,6 +74,7 @@ export class CompositeEvaluatorPipeline {
       problem,
       options.scenarioId
     );
+    console.log(`[Pipeline] ✓ Stage 3 (Stress Simulation): Scenario "${changeSimulation.scenarioTitle}" -> Impact: ${changeSimulation.impactLevel}`);
 
     // Stage 4: Synthesize Final Score & Rubric Breakdown
     // If external AI provided an overallScore, blend 40% deterministic + 60% deep reasoning

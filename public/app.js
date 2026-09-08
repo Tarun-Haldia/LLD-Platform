@@ -253,10 +253,12 @@ if (window.mermaid) {
  * Bootstrapping
  */
 document.addEventListener('DOMContentLoaded', async () => {
+  console.log('%c[LLD Studio]%c Client starting up | Target API:', 'color:#6366f1;font-weight:bold;', 'color:#94a3b8;', API_BASE || 'same-origin');
   updateAiStatusBadge();
   setupEventListeners();
   await initMonacoEditor();
   await loadProblemList();
+  console.log(`%c[LLD Studio]%c Ready! Mode: ${state.isClientMode ? '⚡ Client Standalone' : '● Server Connected'} | Problem: ${state.currentProblemId}`, 'color:#10b981;font-weight:bold;', 'color:#94a3b8;');
 });
 
 /**
@@ -724,6 +726,7 @@ async function selectProblem(problemId) {
 
     if (problem) {
       state.currentProblem = problem;
+      console.log(`%c[LLD Studio]%c Selected problem: %c${problem.id} - ${problem.title}`, 'color:#6366f1;font-weight:bold;', 'color:#94a3b8;', 'color:#38bdf8;font-weight:bold;');
       renderProblemDetails(state.currentProblem);
       loadStarterTemplateForLanguage(state.currentLanguage);
       await refreshAttemptsList();
@@ -794,6 +797,7 @@ function loadStarterTemplateForLanguage(lang) {
                    state.currentProblem.starterTemplates?.java ||
                    '// Write your design here...';
 
+  console.log(`%c[LLD Studio]%c Loaded starter template for %c${lang}`, 'color:#6366f1;font-weight:bold;', 'color:#94a3b8;', 'color:#34d399;font-weight:bold;');
   setEditorCode(template, lang);
 
   if (!elements.rationaleEditor.value.trim()) {
@@ -908,12 +912,21 @@ async function submitSolution() {
     return;
   }
 
+  console.log(
+    `%c[LLD Studio]%c ▶ Submitting solution | Problem: %c${state.currentProblemId}%c | Language: %c${state.currentLanguage}%c | Code length: %c${code.length} chars`,
+    'color:#6366f1;font-weight:bold;', 'color:#94a3b8;',
+    'color:#38bdf8;font-weight:bold;', 'color:#94a3b8;',
+    'color:#34d399;font-weight:bold;', 'color:#94a3b8;',
+    'color:#fbbf24;font-weight:bold;'
+  );
+
   // Show Animated Evaluation Modal
   showEvaluationProgress();
 
   // 1. Try server evaluation if not in standalone client mode
   if (!state.isClientMode) {
     try {
+      console.log(`[LLD Studio] Dispatching submission to server at ${API_BASE || 'same-origin'}/api/submissions...`);
       const res = await fetch(`${API_BASE}/api/submissions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -931,16 +944,19 @@ async function submitSolution() {
       const data = await parseJsonResponse(res);
       if (data.success && data.data?.attemptId) {
         const attemptId = data.data.attemptId;
+        console.log(`%c[LLD Studio]%c Server accepted attempt %c${attemptId}%c. Polling evaluation progress...`,
+          'color:#6366f1;font-weight:bold;', 'color:#94a3b8;', 'color:#38bdf8;font-weight:bold;', 'color:#94a3b8;');
         await pollAttemptStatus(attemptId);
         return;
       }
     } catch (err) {
-      console.warn('Server submission not reachable, falling back to local client evaluator:', err.message);
+      console.warn('[LLD Studio] Server submission not reachable, falling back to local client evaluator:', err.message);
     }
   }
 
   // 2. Client-Side Evaluator Fallback (Instant, Zero Latency)
   try {
+    console.log('%c[LLD Studio]%c Running in-browser deterministic evaluator engine...', 'color:#f59e0b;font-weight:bold;', 'color:#94a3b8;');
     await new Promise(r => setTimeout(r, 1200));
     hideEvaluationProgress();
 
@@ -972,11 +988,19 @@ async function submitSolution() {
     localAttempts.push(attempt);
     localStorage.setItem(storageKey, JSON.stringify(localAttempts));
 
+    console.log(
+      `%c[LLD Studio]%c ✓ Local evaluation completed! Score: %c${result.overallScore}/100%c | Passed checks: %c${result.checklistResults?.filter(c => c.passed).length || 0}/${result.checklistResults?.length || 0}`,
+      'color:#10b981;font-weight:bold;', 'color:#94a3b8;',
+      'color:#34d399;font-weight:bold;', 'color:#94a3b8;',
+      'color:#38bdf8;font-weight:bold;'
+    );
+
     state.latestResult = result;
     state.activeAttempt = attempt;
     await refreshAttemptsList();
     renderFeedbackDashboard(attempt);
   } catch (clientErr) {
+    console.error('[LLD Studio] ✗ Local evaluation error:', clientErr);
     hideEvaluationProgress();
     alert(`Evaluation error: ${clientErr.message}`);
   }
@@ -1029,10 +1053,17 @@ async function pollAttemptStatus(attemptId) {
 
       if (json.success && json.data) {
         const attempt = json.data;
+        console.log(`[LLD Studio] Polling attempt ${attemptId} (#${attemptsCount}) -> Status: ${attempt.status} ${attempt.score !== null ? `| Score: ${attempt.score}/100` : ''}`);
 
         if (attempt.status === 'COMPLETED') {
           clearInterval(interval);
           hideEvaluationProgress();
+          console.log(
+            `%c[LLD Studio]%c ✓ Server evaluation completed! Attempt: %c${attemptId}%c | Score: %c${attempt.score ?? attempt.result?.overallScore}/100`,
+            'color:#10b981;font-weight:bold;', 'color:#94a3b8;',
+            'color:#38bdf8;font-weight:bold;', 'color:#94a3b8;',
+            'color:#34d399;font-weight:bold;'
+          );
           state.latestResult = attempt.result;
           state.activeAttempt = attempt;
           await refreshAttemptsList();
@@ -1040,6 +1071,7 @@ async function pollAttemptStatus(attemptId) {
         } else if (attempt.status === 'FAILED') {
           clearInterval(interval);
           hideEvaluationProgress();
+          console.error(`[LLD Studio] ✗ Server evaluation failed for ${attemptId}:`, attempt.error);
           alert(`Evaluation failed: ${attempt.error || 'Unknown error'}`);
         }
       }
@@ -1047,11 +1079,13 @@ async function pollAttemptStatus(attemptId) {
       if (attemptsCount > 25) {
         clearInterval(interval);
         hideEvaluationProgress();
+        console.warn(`[LLD Studio] ⚠ Polling timed out for attempt ${attemptId} after ${attemptsCount} attempts.`);
         alert('Evaluation took longer than expected. Please check Attempt History.');
       }
     } catch (e) {
       clearInterval(interval);
       hideEvaluationProgress();
+      console.error(`[LLD Studio] Error during status polling:`, e);
     }
   }, 500);
 }
@@ -1225,6 +1259,7 @@ function renderSimulationResult(sim) {
 
 async function reRunSimulation() {
   const scenarioId = elements.simScenarioSelect.value;
+  console.log(`%c[LLD Studio]%c Simulating requirement change scenario: %c${scenarioId}`, 'color:#6366f1;font-weight:bold;', 'color:#94a3b8;', 'color:#38bdf8;font-weight:bold;');
   if (!state.isClientMode) {
     try {
       const res = await fetch(`${API_BASE}/api/simulate-change`, {
@@ -1239,6 +1274,7 @@ async function reRunSimulation() {
       });
       const data = await parseJsonResponse(res);
       if (data.success && data.data) {
+        console.log(`[LLD Studio] Server simulation result: Impact=${data.data.impactLevel}`);
         renderSimulationResult(data.data);
         return;
       }
@@ -1252,7 +1288,7 @@ async function reRunSimulation() {
   if (scenario) {
     const code = getEditorCode();
     const hasInterfaces = /\b(interface|abstract\s+class|\bABC\b|virtual\b)/i.test(code);
-    renderSimulationResult({
+    const simResult = {
       scenarioId: scenario.id,
       scenarioTitle: scenario.title,
       prompt: scenario.prompt,
@@ -1263,7 +1299,9 @@ async function reRunSimulation() {
         ? ['Decoupled contracts allow this requirement change to be added with minimal churn.']
         : ['Direct coupling requires altering multiple methods to accommodate the new behavior.'],
       designTakeaway: 'Decoupling behavior through Strategy or State patterns reduces refactoring friction.'
-    });
+    };
+    console.log(`[LLD Studio] Local simulation result: Impact=${simResult.impactLevel}`);
+    renderSimulationResult(simResult);
   }
 }
 
@@ -1368,6 +1406,11 @@ async function compareSelectedAttempts() {
     elements.diffScoreDelta.textContent = 'Select two different attempts';
     return;
   }
+
+  console.log(`%c[LLD Studio]%c Comparing attempts: %c${baseId}%c vs %c${targetId}`,
+    'color:#6366f1;font-weight:bold;', 'color:#94a3b8;',
+    'color:#38bdf8;font-weight:bold;', 'color:#94a3b8;',
+    'color:#34d399;font-weight:bold;');
 
   if (!state.isClientMode) {
     try {
