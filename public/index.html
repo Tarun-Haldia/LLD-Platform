@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LLD Studio | Practice Low-Level Design with Explainable Feedback</title>
+  <meta name="description" content="Master Low-Level Design (LLD) with hands-on practice, deterministic structural analysis, deep explainable AI feedback, and attempt diffing.">
+  <meta name="theme-color" content="#0d1117">
+  
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  
+  <!-- Mermaid.js for interactive Class Diagrams -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+
+  <!-- Monaco Editor (The official VS Code Editor & IntelliSense Engine) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Top Navigation Header -->
+  <header class="app-header" id="app-header">
+    <div class="header-container">
+      <div class="brand-group">
+        <div class="brand-logo">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+            <line x1="8" y1="21" x2="16" y2="21"></line>
+            <line x1="12" y1="17" x2="12" y2="21"></line>
+            <circle cx="7" cy="8" r="1.5" fill="currentColor"></circle>
+            <path d="M12 7h5M12 11h3"></path>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1 class="brand-title">LLD Studio</h1>
+          <span class="brand-badge">Interactive Practice & Evaluation</span>
+        </div>
+      </div>
+
+      <!-- Problem Switcher Dropdown -->
+      <div class="problem-selector-wrapper">
+        <label for="problem-select" class="selector-label">Problem:</label>
+        <div class="custom-select-container">
+          <select id="problem-select" class="problem-select">
+            <option value="" disabled>Loading problems...</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Header Actions -->
+      <div class="header-actions">
+        <button id="btn-ai-settings" class="btn btn-secondary" title="Configure Live AI Evaluator (Gemini / OpenAI)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+            <circle cx="8.5" cy="8.5" r="1.5"></circle>
+            <circle cx="15.5" cy="8.5" r="1.5"></circle>
+            <path d="M9 15h6"></path>
+          </svg>
+          <span id="ai-status-text">AI: Offline Analyzer</span>
+        </button>
+
+        <button id="btn-view-history" class="btn btn-secondary" title="View past attempts and diffs">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+          </svg>
+          Attempt History (<span id="attempt-count-badge">0</span>)
+        </button>
+
+        <button id="btn-submit-main" class="btn btn-primary" title="Submit your design for evaluation">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+          Submit &amp; Evaluate
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Split Layout -->
+  <main class="main-layout" id="main-content">
+    <!-- Left Pane: Problem Briefing & Requirements -->
+    <aside class="pane left-pane" id="problem-pane">
+      <div class="pane-inner">
+        <!-- Problem Header Card -->
+        <div class="problem-card">
+          <div class="problem-meta-tags">
+            <span id="problem-difficulty" class="badge badge-medium">Medium</span>
+            <span id="problem-category" class="badge badge-category">Creational &amp; Strategy</span>
+            <span id="problem-time" class="badge badge-time">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+              45 mins
+            </span>
+          </div>
+          <h2 id="problem-title" class="problem-heading">Loading problem...</h2>
+          <p id="problem-summary" class="problem-desc"></p>
+        </div>
+
+        <!-- Problem Navigation Tabs -->
+        <div class="tabs-nav problem-tabs">
+          <button class="tab-btn active" data-tab="tab-requirements" id="tab-btn-reqs">Requirements</button>
+          <button class="tab-btn" data-tab="tab-entities" id="tab-btn-entities">Key Entities</button>
+          <button class="tab-btn" data-tab="tab-rubric" id="tab-btn-rubric">Rubric &amp; Checklist</button>
+          <button class="tab-btn" data-tab="tab-scenarios" id="tab-btn-scenarios">Change Scenarios</button>
+        </div>
+
+        <!-- Tab 1: Functional & Non-Functional Requirements -->
+        <div class="tab-content active" id="tab-requirements">
+          <section class="section-block">
+            <h3 class="section-title">Functional Requirements</h3>
+            <ul id="functional-reqs-list" class="styled-list"></ul>
+          </section>
+
+          <section class="section-block">
+            <h3 class="section-title">Non-Functional Requirements</h3>
+            <ul id="non-functional-reqs-list" class="styled-list"></ul>
+          </section>
+
+          <section class="section-block">
+            <h3 class="section-title">Constraints</h3>
+            <ul id="constraints-list" class="styled-list"></ul>
+          </section>
+        </div>
+
+        <!-- Tab 2: Key Entities & Patterns -->
+        <div class="tab-content" id="tab-entities">
+          <section class="section-block">
+            <h3 class="section-title">Core Domain Entities</h3>
+            <p class="section-hint">Ensure these essential nouns and interfaces are represented in your design:</p>
+            <div id="entities-tags" class="entity-tags-cloud"></div>
+          </section>
+
+          <section class="section-block">
+            <h3 class="section-title">Targeted Design Patterns</h3>
+            <div id="patterns-tags" class="pattern-tags-cloud"></div>
+          </section>
+        </div>
+
+        <!-- Tab 3: Evaluation Rubric Checklist -->
+        <div class="tab-content" id="tab-rubric">
+          <section class="section-block">
+            <h3 class="section-title">Evaluation Dimensions</h3>
+            <div class="rubric-dimension-cards">
+              <div class="rubric-dim-card">
+                <span class="dim-icon">⚖️</span>
+                <strong>SOLID Principles (25%)</strong>
+                <p>Single Responsibility, Open/Closed polymorphism, Interface Segregation.</p>
+              </div>
+              <div class="rubric-dim-card">
+                <span class="dim-icon">🧩</span>
+                <strong>Extensibility &amp; Modularity (25%)</strong>
+                <p>Adding new strategies/policies without altering core classes.</p>
+              </div>
+              <div class="rubric-dim-card">
+                <span class="dim-icon">📐</span>
+                <strong>Design Patterns &amp; Abstraction (20%)</strong>
+                <p>Strategy, State, Observer, Factory appropriateness.</p>
+              </div>
+              <div class="rubric-dim-card">
+                <span class="dim-icon">🔒</span>
+                <strong>Concurrency &amp; State Safety (15%)</strong>
+                <p>Thread-safety, race condition guards, legal state transitions.</p>
+              </div>
+              <div class="rubric-dim-card">
+                <span class="dim-icon">🛡️</span>
+                <strong>Completeness &amp; Edge Cases (15%)</strong>
+                <p>Validation, error handling, null guards, invariants.</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="section-block">
+            <h3 class="section-title">Problem Checklist</h3>
+            <ul id="problem-checklist" class="checklist-preview"></ul>
+          </section>
+        </div>
+
+        <!-- Tab 4: Requirement Change Scenarios -->
+        <div class="tab-content" id="tab-scenarios">
+          <section class="section-block">
+            <h3 class="section-title">Stress-Testing Your Design</h3>
+            <p class="section-hint">Great Low-Level Designs withstand sudden requirement changes. Review these scenarios to see what questions an interviewer would probe:</p>
+            <div id="change-scenarios-list" class="scenarios-container"></div>
+          </section>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Right Pane: Interactive Solution Studio -->
+    <section class="pane right-pane" id="editor-pane">
+      <div class="editor-header">
+        <!-- Editor View Tabs -->
+        <div class="tabs-nav editor-tabs">
+          <button class="tab-btn active" data-editor-tab="editor-tab-code" id="btn-tab-code">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+            Code &amp; Class Design
+          </button>
+          <button class="tab-btn" data-editor-tab="editor-tab-rationale" id="btn-tab-rationale">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+            Design Decisions &amp; Rationale
+          </button>
+          <button class="tab-btn" data-editor-tab="editor-tab-diagram" id="btn-tab-diagram">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+            Live Class Diagram (Mermaid)
+          </button>
+        </div>
+
+        <!-- Controls Toolbar -->
+        <div class="editor-controls">
+          <div class="control-item">
+            <label for="language-select">Language:</label>
+            <select id="language-select" class="control-select">
+              <option value="java">Java</option>
+              <option value="typescript">TypeScript</option>
+              <option value="python">Python</option>
+              <option value="cpp">C++</option>
+            </select>
+          </div>
+          <button id="btn-reset-template" class="btn btn-ghost" title="Reset code to starter template">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+            Reset Template
+          </button>
+        </div>
+      </div>
+
+      <!-- Editor Panes -->
+      <div class="editor-body">
+        <!-- 1. Code Editor Tab (VS Code Monaco Engine) -->
+        <div class="editor-pane-tab active" id="editor-tab-code">
+          <div class="code-editor-container">
+            <div id="monaco-editor-container" class="monaco-container"></div>
+            <!-- Fallback textarea if offline -->
+            <textarea id="code-editor-fallback" class="code-editor hidden" spellcheck="false" placeholder="// Write your classes, interfaces, and methods here..."></textarea>
+          </div>
+          <div class="editor-footer">
+            <span id="code-stats">0 lines | JAVA</span>
+            <span class="tip-label">⚡ VS Code Dark Theme &amp; IntelliSense Enabled. Press Ctrl+Space for autocompletion.</span>
+          </div>
+        </div>
+
+        <!-- 2. Rationale Tab -->
+        <div class="editor-pane-tab" id="editor-tab-rationale">
+          <div class="rationale-container">
+            <div class="rationale-prompt-box">
+              <h4>🎯 What to explain in your rationale:</h4>
+              <p>1. Why did you choose specific patterns (e.g. Strategy, State, Observer)?</p>
+              <p>2. How did you ensure thread-safety and avoid race conditions?</p>
+              <p>3. What architectural trade-offs did you make (e.g. memory vs speed, coupling vs complexity)?</p>
+            </div>
+            <textarea id="rationale-editor" class="rationale-editor" placeholder="Explain your design decisions, pattern choices, and trade-offs here..."></textarea>
+          </div>
+        </div>
+
+        <!-- 3. Diagram Tab -->
+        <div class="editor-pane-tab" id="editor-tab-diagram">
+          <div class="diagram-workspace">
+            <div class="diagram-editor-column">
+              <div class="diagram-toolbar">
+                <span class="subheading">Mermaid Class Diagram Code</span>
+                <button id="btn-render-diagram" class="btn btn-small btn-secondary">Update Diagram</button>
+              </div>
+              <textarea id="diagram-editor" class="diagram-editor" spellcheck="false"></textarea>
+            </div>
+            <div class="diagram-preview-column">
+              <div class="diagram-toolbar">
+                <span class="subheading">Visual Preview</span>
+              </div>
+              <div id="diagram-output" class="diagram-output">
+                <p class="empty-hint">Click 'Update Diagram' or edit Mermaid syntax to render.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Evaluation Loading Modal Overlay -->
+  <div id="eval-modal" class="modal-backdrop hidden">
+    <div class="modal-card eval-card">
+      <div class="eval-spinner-wrapper">
+        <div class="eval-spinner"></div>
+      </div>
+      <h3 id="eval-modal-title">Evaluating Your Solution</h3>
+      <p id="eval-modal-desc">Analyzing domain structure, checking SOLID principles, and performing deep reasoning...</p>
+
+      <div class="eval-steps-progress">
+        <div class="eval-step active" id="step-static">
+          <span class="step-indicator">1</span>
+          <span class="step-text">Deterministic Entity &amp; Structural Analysis</span>
+        </div>
+        <div class="eval-step" id="step-solid">
+          <span class="step-indicator">2</span>
+          <span class="step-text">SOLID Principles &amp; Anti-Pattern Smells</span>
+        </div>
+        <div class="eval-step" id="step-reasoning">
+          <span class="step-indicator">3</span>
+          <span class="step-text">Qualitative Reasoning &amp; Trade-Off Analysis</span>
+        </div>
+        <div class="eval-step" id="step-stress">
+          <span class="step-indicator">4</span>
+          <span class="step-text">Requirement Change Simulation</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Feedback Results Drawer / Overlay -->
+  <div id="feedback-overlay" class="feedback-overlay hidden">
+    <div class="feedback-container">
+      <!-- Header Banner -->
+      <div class="feedback-header">
+        <div class="feedback-header-left">
+          <div class="score-circle-container">
+            <div class="score-circle" id="overall-score-circle">
+              <span id="overall-score-num">85</span>
+              <span class="score-max">/100</span>
+            </div>
+          </div>
+          <div class="feedback-title-group">
+            <div class="score-meta">
+              <span id="attempt-pill" class="badge badge-primary">Attempt #1</span>
+              <span id="score-grade-badge" class="badge badge-success">Proficient Design</span>
+              <span id="evaluator-provider-badge" class="badge badge-category">Deep Dynamic Analyzer</span>
+              <span id="fallback-badge" class="badge badge-warning hidden">Resilient Mode</span>
+            </div>
+            <h2 id="feedback-problem-title">Design Feedback: Parking Lot</h2>
+            <p id="feedback-timestamp" class="feedback-time">Evaluated just now</p>
+          </div>
+        </div>
+        <div class="feedback-header-actions">
+          <button id="btn-open-diff-from-feedback" class="btn btn-secondary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            Compare Attempts
+          </button>
+          <button id="btn-close-feedback" class="btn btn-ghost" title="Close feedback view">✕</button>
+        </div>
+      </div>
+
+      <!-- Feedback Content Grid -->
+      <div class="feedback-body">
+        <!-- 5-Dimension Scorecard Breakdown -->
+        <section class="feedback-section scorecard-section">
+          <h3 class="section-title">Evaluation Dimensions</h3>
+          <div id="dimension-bars" class="dimension-bars-grid"></div>
+        </section>
+
+        <!-- Strengths vs Areas to Improve -->
+        <div class="two-col-grid">
+          <!-- Strengths -->
+          <section class="feedback-section strengths-card">
+            <h3 class="section-title text-success">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              What Went Well
+            </h3>
+            <ul id="strengths-list" class="feedback-points-list"></ul>
+          </section>
+
+          <!-- Weaknesses -->
+          <section class="feedback-section weaknesses-card">
+            <h3 class="section-title text-warning">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+              Areas to Improve
+            </h3>
+            <ul id="weaknesses-list" class="feedback-points-list"></ul>
+          </section>
+        </div>
+
+        <!-- Detected Smells & Violations -->
+        <section class="feedback-section smells-section" id="smells-wrapper">
+          <h3 class="section-title">Detected Design Smells</h3>
+          <div id="smells-list" class="smells-cards-container"></div>
+        </section>
+
+        <!-- Actionable Refactoring Recommendations -->
+        <section class="feedback-section suggestions-section">
+          <h3 class="section-title">Actionable Refactoring Recommendations</h3>
+          <div id="suggestions-list" class="suggestions-cards-container"></div>
+        </section>
+
+        <!-- Problem Checklist Results -->
+        <section class="feedback-section checklist-section">
+          <h3 class="section-title">Problem Checklist Verification</h3>
+          <div id="checklist-results" class="checklist-grid"></div>
+        </section>
+
+        <!-- Requirement Change Stress Test -->
+        <section class="feedback-section change-simulation-section">
+          <div class="section-header-row">
+            <div>
+              <h3 class="section-title">Requirement Change Stress Test</h3>
+              <p class="section-hint">Simulate how your design holds up when requirements unexpectedly pivot.</p>
+            </div>
+            <div class="scenario-controls">
+              <select id="sim-scenario-select" class="control-select"></select>
+              <button id="btn-run-sim" class="btn btn-secondary btn-small">Re-run Test</button>
+            </div>
+          </div>
+          <div id="change-simulation-output" class="simulation-card"></div>
+        </section>
+
+        <!-- Trade-off Analysis -->
+        <section class="feedback-section tradeoffs-section">
+          <h3 class="section-title">Architectural Trade-Offs</h3>
+          <div id="tradeoffs-list" class="tradeoffs-cards-container"></div>
+        </section>
+      </div>
+
+      <!-- Feedback Footer Actions -->
+      <div class="feedback-footer">
+        <button id="btn-iterate-design" class="btn btn-primary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+          Iterate &amp; Refactor Solution
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Attempt History & Diff Modal -->
+  <div id="history-modal" class="modal-backdrop hidden">
+    <div class="modal-card history-modal-card">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h3>Attempt History &amp; Diff Comparison</h3>
+          <p>Track your progression through the practice loop (<span class="code-font">Choose → Design → Submit → Review → Iterate</span>)</p>
+        </div>
+        <button id="btn-close-history" class="btn btn-ghost">✕</button>
+      </div>
+
+      <div class="history-content-grid">
+        <!-- Left: Attempts List Timeline -->
+        <div class="attempts-timeline-col">
+          <h4 class="subheading">Past Attempts</h4>
+          <div id="attempts-list" class="attempts-list-view"></div>
+        </div>
+
+        <!-- Right: Diff Comparator -->
+        <div class="diff-viewer-col">
+          <div class="diff-header-bar">
+            <div class="diff-selectors">
+              <span>Compare:</span>
+              <select id="diff-base-select" class="control-select"></select>
+              <span>with:</span>
+              <select id="diff-target-select" class="control-select"></select>
+              <button id="btn-compare-attempts" class="btn btn-small btn-secondary">Compare</button>
+            </div>
+            <div id="diff-score-delta" class="score-delta-badge">Δ +0 pts</div>
+          </div>
+
+          <div class="diff-tabs-nav">
+            <button class="diff-tab-btn active" data-diff-view="diff-code" id="btn-diff-code-tab">Code Changes</button>
+            <button class="diff-tab-btn" data-diff-view="diff-rationale" id="btn-diff-rationale-tab">Rationale Changes</button>
+          </div>
+
+          <div class="diff-viewport">
+            <div id="diff-code-view" class="diff-display-area active">
+              <p class="empty-hint">Select two attempts above and click 'Compare' to inspect line-by-line diffs.</p>
+            </div>
+            <div id="diff-rationale-view" class="diff-display-area">
+              <p class="empty-hint">Rationale changes will appear here.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+  <!-- AI Settings Modal -->
+  <div id="ai-modal" class="modal-backdrop hidden">
+    <div class="modal-card" style="max-width: 520px; padding: 1.75rem;">
+      <div class="modal-header" style="padding: 0 0 1rem 0; border-bottom: 1px solid var(--border-subtle); margin-bottom: 1.25rem;">
+        <div class="modal-title-group">
+          <h3>🤖 Live AI Evaluator Settings</h3>
+          <p style="font-size: 0.82rem; color: var(--text-secondary);">Enable real-time LLM reasoning to evaluate your exact code line-by-line.</p>
+        </div>
+        <button id="btn-close-ai-modal" class="btn btn-ghost">✕</button>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 1rem;">
+        <div>
+          <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 0.4rem;">AI Provider:</label>
+          <select id="ai-provider-select" class="control-select" style="width: 100%; padding: 0.6rem;">
+            <option value="gemini">Google Gemini 1.5 Flash (Free &amp; Ultra-Fast)</option>
+            <option value="openai">OpenAI GPT-4o-mini</option>
+            <option value="offline">Built-in Dynamic Syntax &amp; Smells Analyzer (Offline)</option>
+          </select>
+        </div>
+        <div id="api-key-group">
+          <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 0.4rem;">API Key:</label>
+          <input type="password" id="input-api-key" placeholder="Enter your Gemini or OpenAI API key..." style="width: 100%; padding: 0.6rem 0.8rem; background: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: #fff; font-family: var(--font-mono); font-size: 0.85rem; outline: none;">
+          <p id="ai-key-hint" style="font-size: 0.76rem; color: var(--accent-secondary); margin-top: 0.4rem;">
+            💡 Get a free Gemini API key in 10 seconds: <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color: #38bdf8; text-decoration: underline;">Google AI Studio</a> (No credit card needed).
+          </p>
+        </div>
+        <div id="ai-key-test-status" style="font-size: 0.82rem; display: none; padding: 0.5rem 0.75rem; border-radius: 6px;"></div>
+        <div style="display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 0.5rem;">
+          <button id="btn-test-ai-key" class="btn btn-secondary btn-small">Verify Key</button>
+          <button id="btn-save-ai-key" class="btn btn-primary btn-small">Save Settings</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Application Logic -->
+  <script src="app.js"></script>
+</body>
+</html>

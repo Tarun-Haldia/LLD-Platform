@@ -1,0 +1,25 @@
+{
+  "name": "lld-practice-platform",
+  "version": "1.0.0",
+  "description": "Interactive Low-Level Design practice platform with explainable feedback and attempt diffing",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node server/index.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  },
+  "keywords": [
+    "lld",
+    "low-level-design",
+    "system-design",
+    "practice",
+    "solid-principles",
+    "design-patterns"
+  ],
+  "author": "Engineering Candidate",
+  "license": "ISC"
+}
